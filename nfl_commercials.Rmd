@@ -1,0 +1,86 @@
+---
+title: "Untitled"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+theme_set(theme_bw())
+
+youtube <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-03-02/youtube.csv')
+```
+
+
+
+```{r}
+youtube %>% 
+  select(year, funny:use_sex) %>% 
+  pivot_longer(-year) %>% 
+  group_by(year, name) %>% 
+  summarize(pct = mean(value), 
+            n = n()) %>% 
+  ggplot(aes(year, pct, color = name)) +
+  geom_line(size = 1.2, alpha = .8, show.legend = FALSE) +
+  facet_wrap(~ name)
+```
+
+## Fit a simple model
+
+```{r}
+simple_mod <- lm(year ~ funny + show_product_quickly + patriotic + animals + celebrity + danger + use_sex, data = youtube)
+
+summary(simple_mod)
+```
+
+```{r}
+bootstraps(youtube, times = 1000)
+```
+
+```{r}
+youtube_intervals <- 
+  reg_intervals(year ~ funny + show_product_quickly + 
+                patriotic + animals + celebrity + 
+                danger + use_sex, 
+              data = youtube, 
+              type = "percentile", 
+              keep_reps = TRUE
+              )
+```
+
+
+
+## Explore bootstrap results
+
+
+```{r}
+youtube_intervals %>% 
+  mutate(term = str_remove(term, "TRUE"), 
+         term = fct_reorder(term, .estimate)) %>% 
+  ggplot(aes(.estimate, term)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(xmin = .lower, xmax = .upper), position = "dodge", width = 0.25) +
+  geom_vline(xintercept = 0, lty = "dashed", color = "grey50") +
+  labs(y = NULL)
+```
+
+```{r}
+youtube_intervals %>% 
+  unnest(.replicates) %>% 
+  ggplot(aes(estimate)) +
+  geom_histogram(aes(fill = term), show.legend = NULL) +
+  geom_vline(xintercept = 0, lty = "dashed", color = "grey50") +
+  facet_wrap(~ term)
+```
+
+
+
+
+
+
