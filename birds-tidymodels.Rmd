@@ -1,0 +1,150 @@
+---
+title: "Untitled"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(scales)
+theme_set(theme_light())
+
+train_raw <- read_csv("train.csv", guess_max = 1e5)
+test_raw <- read_csv("test.csv", guess_max = 1e5)
+```
+
+## EDA
+
+```{r}
+train_raw <- train_raw %>% mutate(damaged = case_when(damaged > 0 ~ "damage", 
+                                         TRUE ~ "no damage"))
+```
+
+
+```{r}
+skimr::skim(train_raw)
+```
+
+```{r}
+library(GGally)
+
+train_raw %>% 
+  select(damaged, incident_year, height, speed, distance) %>% 
+  ggpairs(columns = 2:5, aes(color = damaged, alpha = .8))
+```
+
+
+```{r}
+train_raw %>% 
+  select(damaged, precipitation, flight_phase, visibility, species_quantity, flight_impact, engine_type) %>% 
+  pivot_longer(-damaged) %>% 
+  ggplot(aes(y = value, fill = damaged)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ name, scales = "free") +
+  labs(fill = NULL, x = NULL, y = NULL)
+```
+
+
+```{r}
+birds_df <- train_raw %>% 
+  select(damaged, flight_impact, precipitation, 
+         visibility, flight_phase, engines, incident_year, 
+         incident_month, species_id, engine_type, 
+         aircraft_model, species_quantity, height, speed)
+```
+
+
+## Build a model
+
+
+```{r}
+set.seed(123)
+
+birds_fold <- vfold_cv(train_raw, v = 5, strata = damaged)
+
+birds_metrics <- metric_set(mn_log_loss, accuracy, sensitivity, specificity)
+```
+
+```{r}
+birds_rec <- recipe(damaged ~ ., data = birds_df) %>% 
+  step_novel(all_nominal_predictors()) %>%
+  step_other(all_nominal_predictors(), threshold = .01) %>% 
+  step_unknown(all_nominal_predictors()) %>% 
+  step_impute_median(all_numeric_predictors()) %>% 
+  step_zv(all_predictors())
+
+birds_rec
+```
+
+```{r}
+library(baguette)
+
+bag_spec <- 
+  bag_tree(min_n = 10) %>% 
+  set_engine("rpart", times = 25) %>% 
+  set_mode("classification")
+
+bag_spec
+```
+
+```{r}
+imb_wf <- 
+  workflow() %>% 
+  add_recipe(birds_rec) %>% 
+  add_model(bag_spec) 
+
+fit(imb_wf, data = birds_df)
+```
+
+
+
+## Resample and compare models
+
+
+```{r}
+set.seed(321)
+
+imb_results <- fit_resamples(
+  imb_wf, 
+  resamples = birds_fold,
+  metrics = birds_metrics
+)
+
+collect_metrics(imb_results)
+```
+
+
+```{r}
+library(themis)
+
+bal_rec <- birds_rec %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_smote(damaged)
+
+bal_wf <- 
+  workflow() %>% 
+  add_recipe(bal_rec) %>% 
+  add_model(bag_spec)
+
+set.seed(321)
+
+bal_results <- fit_resamples(
+  bal_wf, 
+  resamples = birds_fold,
+  metrics = birds_metrics
+)
+
+collect_metrics(bal_results)
+```
+
+
+
+
+
+

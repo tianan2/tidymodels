@@ -1,0 +1,147 @@
+---
+title: "Untitled"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(scales)
+theme_set(theme_light())
+
+netflix_raw <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-04-20/netflix_titles.csv')
+```
+
+
+## EDA
+
+
+```{r}
+netflix_raw %>% 
+  count(country, sort = T)
+
+netflix_raw %>% 
+  count(type)
+```
+
+```{r}
+netflix_raw %>% 
+  slice_sample(n = 10) %>% 
+  pull(description)
+```
+
+```{r}
+library(tidytext)
+
+netflix_raw %>% 
+  unnest_tokens(word, description) %>% 
+  anti_join(get_stopwords()) %>% 
+  count(type, word, sort = T) %>% 
+  group_by(type) %>% 
+  slice_max(n, n = 15) %>% 
+  ungroup() %>% 
+  mutate(word = reorder_within(word, n, type)) %>% 
+  ggplot(aes(x = n, y = word, fill = type)) +
+  geom_col(show.legend = F, alpha = .8) +
+  scale_y_reordered() +
+  labs(x = "Word Frequency", y = NULL) +
+  facet_wrap(~ type, scales = "free") 
+```
+
+
+## Build a model
+
+
+```{r}
+library(tidymodels)
+
+set.seed(123)
+netflix_splits <- netflix_raw %>% 
+  select(type, description) %>% 
+  initial_split(strata = type)
+
+netflix_training <- training(netflix_splits)
+netflix_testing <- testing(netflix_splits)
+
+set.seed(234)
+netflix_fold <- vfold_cv(netflix_training, strata = type)
+netflix_fold
+```
+
+
+```{r}
+library(textrecipes)
+library(themis)
+
+netflix_rec <- recipe(type ~ description, data = netflix_training) %>% 
+  step_tokenize(description) %>% 
+  step_tokenfilter(description, max_tokens = 1e3) %>% 
+  step_tfidf(description) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_smote(type)
+
+svm_spec <- svm_linear() %>% 
+  set_mode("classification") %>% 
+  set_engine("LiblineaR")
+
+netflix_wf <- 
+  workflow() %>% 
+  add_recipe(netflix_rec) %>% 
+  add_model(svm_spec)
+  
+netflix_wf
+```
+
+```{r}
+doParallel::registerDoParallel()
+
+set.seed(123)
+
+svm_rs <- fit_resamples(
+  netflix_wf, 
+  netflix_fold, 
+  metrics = metric_set(accuracy, recall, precision),
+  control = control_resamples(save_pred = TRUE)
+)
+
+```
+
+```{r}
+svm_rs %>% 
+  conf_mat_resampled(tidy = FALSE) %>% 
+  autoplot()
+```
+
+
+## Fit and evaluate a final model
+
+
+```{r}
+finall_fitted <- last_fit(
+  netflix_wf, 
+  netflix_splits, 
+  metrics = metric_set(accuracy, recall, precision)
+)
+
+collect_metrics(finall_fitted)
+```
+
+```{r}
+collect_predictions(finall_fitted) %>% 
+  conf_mat(type, .pred_class) %>% 
+  autoplot()
+```
+
+
+
+
+
+
+
+
+
