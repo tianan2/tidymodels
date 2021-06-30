@@ -17,7 +17,7 @@ training <- read_csv("~/Downloads/train.csv") %>% mutate(release_date = mdy(rele
 testing <- read_csv("~/Downloads/test.csv")
 ```
 
-
+## Data cleaning
 
 ```{r}
 extract_json_names <- function(s) {
@@ -26,12 +26,90 @@ extract_json_names <- function(s) {
     map_chr(paste, collapse = ";")
 }
 
-training %>% 
-  mutate()
-  mutate(spoken_languages = str_extract_all(spoken_languages, "'name': '(.*?)'"))
-  mutate(homepage = ifelse(is.na(homepage), 1, 0), 
-         spoken_languages = str_extract(spoken_languages, "'name': '(.*?)'"))
-  
+train_cleaned <- training %>% 
+  mutate(across(c(belongs_to_collection, genres, 
+                production_companies, production_countries, 
+                spoken_languages, Keywords, crew, cast), 
+         extract_json_names)) %>% 
+  mutate(has_homepage = !is.na(homepage), 
+         release_date = if_else(release_date >= "2024-01-01", 
+                                       release_date - years(100), 
+                                       release_date))
+
 ```
+
+## EDA
+
+```{r}
+summarize_revenue <- function(tbl) {
+  tbl %>% 
+  summarize(median_revenue = median(revenue), 
+            geom_mean_revenue = exp(mean(log(revenue))), 
+            n = n()) %>% 
+    arrange(desc(n))
+}
+
+train_cleaned %>% 
+  group_by(status) %>% 
+  summarize_revenue()
+  
+train_cleaned %>% 
+  group_by(year = year(release_date)) %>% 
+  summarize_revenue() %>% 
+  filter(n > 20) %>% 
+  ggplot(aes(year, median_revenue)) +
+  geom_point(aes(size =n)) +
+  geom_line() +
+  expand_limits(y = 0)
+
+train_cleaned %>% 
+  group_by(decade = 10 * year(release_date) %/% 10) %>% 
+  summarize_revenue() %>% 
+  filter(n > 20) %>% 
+  ggplot(aes(decade, median_revenue)) +
+  geom_point(aes(size = n)) +
+  geom_line() +
+  expand_limits(y = 0)
+```
+
+```{r}
+train_cleaned %>% 
+  group_by(month = month(release_date, label = TRUE), 
+           year = 10 * year(release_date) %/% 10) %>% 
+  summarize_revenue() %>% 
+  filter(n > 20) %>% 
+  ggplot(aes(month, median_revenue, color = factor(year))) +
+  geom_point(aes(size = n)) +
+  geom_line(aes(group = year)) +
+  expand_limits(y = 0) +
+  scale_y_continuous(labels = scales::dollar)
+```
+
+
+Numeric predictors: budget, popularity, runtime
+
+Date/time: year (non-linear), month (non-linear)
+
+Categorical predictors: genres, original languages, production companies, production countries, spoken languages, Keywords, cast, crew
+
+Text predictors: original title, overview, tagline, title
+
+
+```{r}
+lin_rec <- recipe(revenue ~ budget + runtime + 
+                     popularity + release_date, 
+                   data = train_cleaned) %>% 
+  step_mutate(release_year = year(release_date), 
+              release_week = week(release_date)) %>% 
+  step_rm(release_date)
+  
+workflow() %>% 
+  add_recipe(rec_linear) %>% 
+  add_model(linear_reg()) %>% 
+  seg_engie("lm")
+
+
+```
+
 
 
