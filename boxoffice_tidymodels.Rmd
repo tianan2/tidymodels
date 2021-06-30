@@ -1,0 +1,37 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(lubridate)
+theme_set(theme_light())
+
+training <- read_csv("~/Downloads/train.csv") %>% mutate(release_date = mdy(release_date))
+testing <- read_csv("~/Downloads/test.csv")
+```
+
+
+
+```{r}
+extract_json_names <- function(s) {
+  str_match_all(s, "'name': '(.*?)'") %>% 
+    map(~ .[, 2]) %>% 
+    map_chr(paste, collapse = ";")
+}
+
+training %>% 
+  mutate()
+  mutate(spoken_languages = str_extract_all(spoken_languages, "'name': '(.*?)'"))
+  mutate(homepage = ifelse(is.na(homepage), 1, 0), 
+         spoken_languages = str_extract(spoken_languages, "'name': '(.*?)'"))
+  
+```
+
+
