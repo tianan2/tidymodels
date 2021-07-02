@@ -101,13 +101,13 @@ lin_rec <- recipe(revenue ~ budget + runtime +
                    data = train_cleaned) %>% 
   step_mutate(release_year = year(release_date), 
               release_week = week(release_date)) %>% 
+  step_ns(release_year, deg_free = tune("deg_free_year")) %>% 
+  step_ns(release_week, deg_free = tune("deg_free_week")) %>% 
   step_rm(release_date)
   
-workflow() %>% 
-  add_recipe(rec_linear) %>% 
-  add_model(linear_reg()) %>% 
-  seg_engie("lm")
-
+lin_wf <- workflow() %>% 
+  add_recipe(lin_rec) %>% 
+  add_model(linear_reg() %>% set_engine("lm"))
 
 ```
 
