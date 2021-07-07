@@ -1,0 +1,51 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(scales)
+theme_set(theme_light())
+```
+
+
+```{r}
+dataset <- read_csv("~/Downloads/train 2.csv") %>% mutate(price = price + 1)
+holdout <- read_csv("~/Downloads/test 2.csv")
+
+set.seed(2021)
+
+spl <- initial_split(dataset, prop = .75)
+train <- training(spl)
+test <- testing(spl)
+```
+
+
+
+```{r}
+train %>% 
+  ggplot(aes(price)) +
+  geom_histogram() +
+  scale_x_log10()
+
+summarize_prices <- function(tbl) {
+  tbl %>% 
+    summarize(avg_price = exp(mean(price)) - 1, 
+              median_price = exp(median(price)) -1, 
+              n = n()) %>% 
+    arrange(desc(n))
+}
+
+train %>% 
+  ggplot(aes(price, room_type)) +
+  geom_boxplot() +
+  scale_x_log10(labels = dollar_format())
+  
+```
+
